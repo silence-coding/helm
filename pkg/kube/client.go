@@ -658,8 +658,8 @@ func (c *Client) update(originals, targets ResourceList, createApplyFunc CreateA
 		c.Logger().Debug("deleting resource", "namespace", info.Namespace, "name", info.Name, "kind", info.Mapping.GroupVersionKind.Kind)
 
 		if err := info.Get(); err != nil {
-			c.Logger().Warn(
-				"skipping delete: ownership unverifiable",
+			c.Logger().Debug(
+				"unable to get object",
 				slog.String("namespace", info.Namespace),
 				slog.String("name", info.Name),
 				slog.String("kind", info.Mapping.GroupVersionKind.Kind),

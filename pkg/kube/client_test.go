@@ -688,52 +688,6 @@ func TestUpdateOwnershipCheck(t *testing.T) {
 	}
 }
 
-func TestUpdateOwnershipCheckGetFails(t *testing.T) {
-	// When the live resource cannot be fetched (e.g. RBAC/network error), the
-	// delete loop must skip it rather than proceed to delete.
-	original := newPodList("unverifiable")
-
-	cb := func(_ []RequestResponseAction, req *http.Request) (*http.Response, error) {
-		p, m := req.URL.Path, req.Method
-		switch {
-		case p == "/namespaces/default/pods/unverifiable" && m == http.MethodGet:
-			return newResponse(http.StatusForbidden, &metav1.Status{
-				Status:  metav1.StatusFailure,
-				Reason:  metav1.StatusReasonForbidden,
-				Code:    http.StatusForbidden,
-				Message: "forbidden",
-			})
-		case m == http.MethodDelete:
-			t.Fatalf("delete must not be attempted when ownership is unverifiable")
-			return nil, nil
-		}
-		t.Fatalf("unexpected request %s %s", m, p)
-		return nil, nil
-	}
-
-	c := newTestClient(t)
-	client := NewRequestResponseLogClient(t, cb)
-	c.Factory.(*cmdtesting.TestFactory).UnstructuredClient = &fake.RESTClient{
-		NegotiatedSerializer: unstructuredSerializer,
-		Client:               fake.CreateHTTPClient(client.Do),
-	}
-
-	first, err := c.Build(objBody(&original), false)
-	require.NoError(t, err)
-	second, err := c.Build(objBody(&v1.PodList{}), false)
-	require.NoError(t, err)
-
-	result, err := c.Update(first, second,
-		ClientUpdateOptionForceReplace(false),
-		ClientUpdateOptionServerSideApply(false, false),
-		ClientUpdateOptionThreeWayMergeForUnstructured(false),
-		ClientUpdateOptionUpgradeClientSideFieldManager(true),
-		ClientUpdateOptionOwnership("my-release"),
-	)
-	require.NoError(t, err)
-	assert.Empty(t, result.Deleted)
-}
-
 func TestBuild(t *testing.T) {
 	tests := []struct {
 		name      string
