@@ -572,7 +572,7 @@ func (c *Client) BuildTable(reader io.Reader, validate bool) (ResourceList, erro
 		transformRequests)
 }
 
-func (c *Client) update(originals, targets ResourceList, createApplyFunc CreateApplyFunc, updateApplyFunc UpdateApplyFunc) (*Result, error) {
+func (c *Client) update(originals, targets ResourceList, createApplyFunc CreateApplyFunc, updateApplyFunc UpdateApplyFunc, releaseName string) (*Result, error) {
 	updateErrors := []error{}
 	res := &Result{}
 
@@ -658,8 +658,8 @@ func (c *Client) update(originals, targets ResourceList, createApplyFunc CreateA
 		c.Logger().Debug("deleting resource", "namespace", info.Namespace, "name", info.Name, "kind", info.Mapping.GroupVersionKind.Kind)
 
 		if err := info.Get(); err != nil {
-			c.Logger().Debug(
-				"unable to get object",
+			c.Logger().Warn(
+				"skipping delete: ownership unverifiable",
 				slog.String("namespace", info.Namespace),
 				slog.String("name", info.Name),
 				slog.String("kind", info.Mapping.GroupVersionKind.Kind),
@@ -680,6 +680,18 @@ func (c *Client) update(originals, targets ResourceList, createApplyFunc CreateA
 		if annotations != nil && annotations[ResourcePolicyAnno] == KeepPolicy {
 			c.Logger().Debug("skipping delete due to annotation", "namespace", info.Namespace, "name", info.Name, "kind", info.Mapping.GroupVersionKind.Kind, "annotation", ResourcePolicyAnno, "value", KeepPolicy)
 			continue
+		}
+		if releaseName != "" && annotations != nil {
+			if owner := annotations[ReleaseNameAnnotation]; owner != "" && owner != releaseName {
+				c.Logger().Warn(
+					"skipping delete of resource not owned by this release",
+					slog.String("namespace", info.Namespace),
+					slog.String("name", info.Name),
+					slog.String("kind", info.Mapping.GroupVersionKind.Kind),
+					slog.String("release", releaseName),
+				)
+				continue
+			}
 		}
 		if err := deleteResource(info, metav1.DeletePropagationBackground); err != nil {
 			c.Logger().Debug(
@@ -713,6 +725,7 @@ type clientUpdateOptions struct {
 	dryRun                        bool
 	fieldValidationDirective      FieldValidationDirective
 	upgradeClientSideFieldManager bool
+	releaseName                   string
 }
 
 type ClientUpdateOption func(*clientUpdateOptions) error
@@ -791,6 +804,21 @@ func ClientUpdateOptionFieldValidationDirective(fieldValidationDirective FieldVa
 func ClientUpdateOptionUpgradeClientSideFieldManager(upgradeClientSideFieldManager bool) ClientUpdateOption {
 	return func(o *clientUpdateOptions) error {
 		o.upgradeClientSideFieldManager = upgradeClientSideFieldManager
+
+		return nil
+	}
+}
+
+// ClientUpdateOptionOwnership enables an ownership-aware safeguard during the
+// delete phase of Update: a resource present in originals but absent from
+// targets is only deleted if its meta.helm.sh/release-name annotation is
+// missing or matches releaseName. Resources annotated as belonging to a
+// different release are skipped. This prevents a release from deleting a
+// resource that has been adopted by another release. When releaseName is
+// empty the safeguard is disabled and behavior is unchanged.
+func ClientUpdateOptionOwnership(releaseName string) ClientUpdateOption {
+	return func(o *clientUpdateOptions) error {
+		o.releaseName = releaseName
 
 		return nil
 	}
@@ -902,7 +930,7 @@ func (c *Client) Update(originals, targets ResourceList, options ...ClientUpdate
 		}
 	}
 
-	return c.update(originals, targets, createApplyFunc, makeUpdateApplyFunc())
+	return c.update(originals, targets, createApplyFunc, makeUpdateApplyFunc(), updateOptions.releaseName)
 }
 
 // Delete deletes Kubernetes resources specified in the resources list with

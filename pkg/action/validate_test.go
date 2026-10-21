@@ -145,8 +145,8 @@ func TestExistingResourceConflict(t *testing.T) {
 			appManagedByLabel: appManagedByHelm,
 		}
 		annotations = map[string]string{
-			helmReleaseNameAnnotation:      releaseName,
-			helmReleaseNamespaceAnnotation: releaseNamespace,
+			kube.ReleaseNameAnnotation:      releaseName,
+			kube.ReleaseNamespaceAnnotation: releaseNamespace,
 		}
 		missing   = newMissingDeployment("missing", "ns-a")
 		existing  = newDeploymentWithOwner("existing", "ns-a", labels, annotations)
@@ -181,14 +181,14 @@ func TestCheckOwnership(t *testing.T) {
 
 	// Set only the release name annotation and verify missing release namespace error message
 	_ = accessor.SetAnnotations(deployFoo.Object, map[string]string{
-		helmReleaseNameAnnotation: "rel-a",
+		kube.ReleaseNameAnnotation: "rel-a",
 	})
 	require.EqualError(t, checkOwnership(deployFoo.Object, "rel-a", "ns-a"), `invalid ownership metadata; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "ns-a"`)
 
 	// Set both release name and namespace annotations and verify no ownership errors
 	_ = accessor.SetAnnotations(deployFoo.Object, map[string]string{
-		helmReleaseNameAnnotation:      "rel-a",
-		helmReleaseNamespaceAnnotation: "ns-a",
+		kube.ReleaseNameAnnotation:      "rel-a",
+		kube.ReleaseNamespaceAnnotation: "ns-a",
 	})
 	require.NoError(t, checkOwnership(deployFoo.Object, "rel-a", "ns-a"))
 
@@ -213,12 +213,12 @@ func TestVerifyOwnershipBeforeDelete(t *testing.T) {
 			appManagedByLabel: appManagedByHelm,
 		}
 		annotations = map[string]string{
-			helmReleaseNameAnnotation:      releaseName,
-			helmReleaseNamespaceAnnotation: releaseNamespace,
+			kube.ReleaseNameAnnotation:      releaseName,
+			kube.ReleaseNamespaceAnnotation: releaseNamespace,
 		}
 		wrongAnnotations = map[string]string{
-			helmReleaseNameAnnotation:      "rel-b",
-			helmReleaseNamespaceAnnotation: releaseNamespace,
+			kube.ReleaseNameAnnotation:      "rel-b",
+			kube.ReleaseNamespaceAnnotation: releaseNamespace,
 		}
 	)
 
